@@ -1,15 +1,15 @@
+import argparse
 import asyncio
 import logging
 import re
-import time
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
+from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException
 
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -51,59 +51,72 @@ async def get_sso_login_url():
         raise
 
 
-def automate_browser(url):
+def find_element_if_present(driver, by, locator):
+    elements = driver.find_elements(by, locator)
+    return elements[0] if elements else False
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Automate AWS SSO login.")
+    parser.add_argument("--email", required=True, help="Email address for SSO login")
+    return parser.parse_args()
+
+
+def automate_browser(url, email):
     logger.info("Starting headless browser to automate SSO login")
     options = webdriver.ChromeOptions()
     options.add_argument("--headless")
     browser = webdriver.Chrome(options=options)
 
     try:
-        logger.info(f"Attempting to navigate to URL: {url}")
         browser.get(url)
         logger.info(f"Navigated to URL: {url}")
-        logger.info(f"Page title: {browser.title}")
-        logger.info(f"Current URL: {browser.current_url}")
-        browser.save_screenshot("debug_before_clicking_confirm.png")
 
         # Click 'Confirm and Continue'
         logger.info("Waiting for 'Confirm and Continue' button to be clickable.")
-        confirm_button = WebDriverWait(browser, 10).until(
-            EC.element_to_be_clickable((By.ID, "cli_verification_btn"))
-        )
+        confirm_button = WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.ID, "cli_verification_btn")))
         confirm_button.click()
         logger.info("Clicked 'Confirm and Continue'")
 
-        # Click 'Allow Access'
-        time.sleep(3)  # Wait for 3 seconds
-        try:
-            allow_access_button = browser.find_element(By.ID, "cli_login_button")
-            allow_access_button.click()
-        except Exception as e:
-            logger.error(f"Error finding or clicking the button: {str(e)}")
-            logger.info(f"Page source at error: {browser.page_source}")
-            browser.save_screenshot("debug_error.png")
-            # Optionally, print or log the current URL if the page has redirected
-            logger.info(f"Current URL at error: {browser.current_url}")
-        logger.info("Clicked 'Allow Access'")
+        # Wait for either 'Allow Access' button or email input to appear
+        logger.info("Waiting for 'Allow Access' button or email input to appear.")
+        allow_button_id = "cli_login_button"
+        email_input_id = "i0116"
+
+        # Wait for either element to appear
+        element = WebDriverWait(browser, 30).until(
+            lambda driver: find_element_if_present(driver, By.ID, allow_button_id)
+            or find_element_if_present(driver, By.ID, email_input_id)
+        )
+        logger.info("Detected 'Allow Access' button or email input.")
+
+        # Start handling the found element
+        if element.get_attribute("id") == email_input_id:
+            logger.info("Email login detected. Inputting email address.")
+            element.send_keys(email)
+            submit_button = browser.find_element(By.ID, "idSIButton9")
+            submit_button.click()
+            logger.info("Submitted email login.")
+        else:
+            logger.info("Allow Access button detected. Clicking.")
+            allow_button = browser.find_element(By.ID, allow_button_id)
+            allow_button.click()
+            logger.info("Clicked Allow Access button.")
 
         logger.info("SSO login automated successfully")
     except Exception as e:
         logger.error(f"Error during automated SSO login: {str(e)}")
-        logger.info(f"Page source at error: {browser.page_source}")
         browser.save_screenshot("debug_error.png")
-        # Capture browser console logs if possible
-        for entry in browser.get_log("browser"):
-            logger.info(entry)
-        logger.info("Screenshot taken after encountering an error.")
         raise
     finally:
         browser.quit()
 
 
 async def main():
+    args = parse_args()
     try:
         url = await get_sso_login_url()
-        await asyncio.to_thread(automate_browser, url)
+        await asyncio.to_thread(automate_browser, url, args.email)
     except Exception as e:
         logger.error(f"An error occurred: {str(e)}")
         exit(1)
