@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "automate-aws-sso"
+version = "0.1.0"
+description = "headless automation of aws sso token login for servers and lazy devs"
+authors = ["David Rose <david@drose.io>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+selenium = "^4.18.1"
+
+[tool.poetry.group.dev.dependencies]
+flake8 = "^7.0.0"
+black = "^24.3.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 120
