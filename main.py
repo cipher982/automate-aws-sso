@@ -88,8 +88,8 @@ def dismiss_cookie_banner(browser):
         cookie_banner_button = browser.find_element(By.CSS_SELECTOR, "button[data-id='awsccc-cb-btn-continue']")
         cookie_banner_button.click()
         logger.info("Clicked 'Continue without accepting' button on the cookie banner.")
-    except:
-        pass
+    except Exception as e:
+        logger.debug(f"Cookie banner not found or couldn't be dismissed: {e}")
 
 
 def click_element_by_id(browser, element_id, description):
