@@ -29,6 +29,8 @@ MFA_VERIFY_ID = "idSubmit_SAOTCC_Continue"
 SUBMIT_BUTTON_ID = "idSIButton9"
 DONT_SHOW_AGAIN_CHECKBOX_ID = "KmsiCheckboxField"
 YES_BUTTON_ID = "idSIButton9"
+ALLOW_SELECTOR = "[data-testid='allow-access-button']"
+
 
 MAX_WAIT_TIME = 30
 
@@ -97,6 +99,13 @@ def click_element_by_id(browser, element_id, description):
     element.click()
     logger.info(f"Clicked '{description}' button.")
 
+def click_element_by_selector(browser, selector, description):
+    """Find and click an element by its CSS selector."""
+    logger.info(f"Waiting for '{description}' button to be clickable.")
+    element = WebDriverWait(browser, MAX_WAIT_TIME).until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
+    element.click()
+    logger.info(f"Clicked '{description}' button.")
+
 
 def input_text_by_id(browser, element_id, text, description):
     """Find an input element by its ID and enter text."""
@@ -106,7 +115,7 @@ def input_text_by_id(browser, element_id, text, description):
     logger.info(f"Entered text in '{description}' input.")
 
 
-def get_credentials():
+def get_credentials(update_password=False):
     """Retrieve the email and password from the keyring or prompt the user."""
     email = keyring.get_password("aws_sso_login", "email")
     password = keyring.get_password("aws_sso_login", "password")
@@ -115,9 +124,10 @@ def get_credentials():
         email = input("Enter your email address: ")
         keyring.set_password("aws_sso_login", "email", email)
 
-    if not password:
+    if not password or update_password:
         password = input("Enter your password: ")
         keyring.set_password("aws_sso_login", "password", password)
+        logger.info("Password updated successfully.")
 
     return email, password
 
@@ -159,7 +169,8 @@ async def automate_sso_login(url, email, password, debug=False):
             click_element_by_id(browser, YES_BUTTON_ID, "Yes")
 
         dismiss_cookie_banner(browser)
-        click_element_by_id(browser, ALLOW_ID, "Allow Access")
+        # click_element_by_id(browser, ALLOW_ID, "Allow Access")
+        click_element_by_selector(browser, ALLOW_SELECTOR, "Allow Access")
 
         logger.info("SSO login automated successfully")
         time.sleep(3)
@@ -169,8 +180,8 @@ def parse_args():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Automate AWS SSO login.")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument("--update-password", action="store_true", help="Update stored password")
     return parser.parse_args()
-
 
 async def main():
     args = parse_args()
@@ -178,12 +189,11 @@ async def main():
         logger.setLevel(logging.DEBUG)
     try:
         url = await get_sso_login_url()
-        email, password = get_credentials()
+        email, password = get_credentials(args.update_password)
         await automate_sso_login(url, email, password, args.debug)
     except Exception as e:
         logger.error(f"An error occurred: {str(e)}")
         exit(1)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
