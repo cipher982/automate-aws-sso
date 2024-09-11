@@ -1,25 +1,36 @@
-[tool.poetry]
+[project]
 name = "automate-aws-sso"
 version = "0.1.0"
 description = "headless automation of aws sso token login for servers and lazy devs"
-authors = ["David Rose <david@drose.io>"]
-readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "selenium>=4.18.1",
+    "keyring>=24.3.1",
+    "pre-commit>=3.8.0",
+]
 
-[tool.poetry.dependencies]
-python = "^3.11"
-selenium = "^4.18.1"
-keyring = "^24.3.1"
+[tool.setuptools]
+py_modules = ["automate_aws_sso"]
 
-[tool.poetry.group.dev.dependencies]
-flake8 = "^7.0.0"
-black = "^24.3.0"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.black]
+[tool.ruff]
 line-length = 120
 
-[tool.flake8]
-max-line-length = 120
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "W", "C90"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+force-single-line = true
+
+[tool.ruff.lint.flake8-quotes]
+docstring-quotes = "double"
+inline-quotes = "double"
+multiline-quotes = "double"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
