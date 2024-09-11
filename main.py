@@ -1,17 +1,18 @@
 import argparse
 import asyncio
 import logging
-import re
-from contextlib import contextmanager
-import time
 import os
+import re
 import subprocess
+import time
+from contextlib import contextmanager
+
 import keyring
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver.chrome.service import Service
 
 # Configure logging
 logging.basicConfig(
@@ -32,7 +33,6 @@ SUBMIT_BUTTON_ID = "idSIButton9"
 DONT_SHOW_AGAIN_CHECKBOX_ID = "KmsiCheckboxField"
 YES_BUTTON_ID = "idSIButton9"
 ALLOW_SELECTOR = "[data-testid='allow-access-button']"
-
 
 MAX_WAIT_TIME = 30
 
@@ -71,30 +71,31 @@ async def get_sso_login_url():
         logger.error(f"Error executing command: {str(e)}")
         raise
 
+
 @contextmanager
 def browser_session(debug=False):
     """Context manager for handling the browser session with a custom profile."""
     options = webdriver.ChromeOptions()
     if not debug:
         options.add_argument("--headless")
-    
+
     # Create a custom Chrome profile directory
     custom_profile_dir = os.path.expanduser("~/aws_sso_automation_profile")
     os.makedirs(custom_profile_dir, exist_ok=True)
-    
+
     options.add_argument(f"user-data-dir={custom_profile_dir}")
     options.add_argument("profile-directory=Default")
-    
+
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
-    
+
     logger.debug(f"Chrome options: {options.arguments}")
     logger.debug(f"Custom profile directory: {custom_profile_dir}")
-    
+
     service = Service("/opt/homebrew/bin/chromedriver")
-    
+
     try:
         logger.debug("Attempting to create Chrome browser instance...")
         browser = webdriver.Chrome(service=service, options=options)
@@ -108,6 +109,7 @@ def browser_session(debug=False):
             logger.debug("Closing browser session...")
             browser.quit()
             logger.debug("Browser session closed.")
+
 
 def dismiss_cookie_banner(browser):
     try:
@@ -124,6 +126,7 @@ def click_element_by_id(browser, element_id, description):
     element = WebDriverWait(browser, 30).until(EC.element_to_be_clickable((By.ID, element_id)))
     element.click()
     logger.info(f"Clicked '{description}' button.")
+
 
 def click_element_by_selector(browser, selector, description):
     """Find and click an element by its CSS selector."""
@@ -171,9 +174,9 @@ async def automate_sso_login(url, email, password, debug=False):
             WebDriverWait(browser, 10).until(EC.presence_of_element_located((By.ID, CONFIRM_ID)))
             logger.info("Confirmation code screen found. Clicking 'Confirm and continue'.")
             click_element_by_id(browser, CONFIRM_ID, "Confirm and Continue")
-        except:
+        except Exception:
             logger.info("Confirmation code screen not found. Proceeding with login process.")
-            
+
             # Wait for either 'Allow Access' button or email input to appear
             logger.info("Waiting for 'Allow Access' button or email input to appear.")
             element = WebDriverWait(browser, 30).until(
@@ -194,7 +197,7 @@ async def automate_sso_login(url, email, password, debug=False):
                 try:
                     WebDriverWait(browser, 10).until(EC.presence_of_element_located((By.ID, MFA_CHECKBOX_ID)))
                     logger.info("MFA required. Proceeding with MFA process.")
-                    
+
                     dismiss_cookie_banner(browser)
                     click_element_by_id(browser, MFA_CHECKBOX_ID, "Don't ask again for 30 days")
 
@@ -206,7 +209,7 @@ async def automate_sso_login(url, email, password, debug=False):
                     dismiss_cookie_banner(browser)
                     click_element_by_id(browser, DONT_SHOW_AGAIN_CHECKBOX_ID, "Don't show this again")
                     click_element_by_id(browser, YES_BUTTON_ID, "Yes")
-                except:
+                except Exception:
                     logger.info("MFA not required or already completed.")
 
         # Wait for the "Allow Access" button
@@ -215,12 +218,13 @@ async def automate_sso_login(url, email, password, debug=False):
             WebDriverWait(browser, MAX_WAIT_TIME).until(EC.element_to_be_clickable((By.CSS_SELECTOR, ALLOW_SELECTOR)))
             click_element_by_selector(browser, ALLOW_SELECTOR, "Allow Access")
             logger.info("Clicked 'Allow Access' button.")
-        except:
-            logger.error("Failed to find or click 'Allow Access' button.")
+        except Exception as e:
+            logger.error(f"Failed to find or click 'Allow Access' button: {str(e)}")
             raise
 
         logger.info("SSO login automated successfully")
         time.sleep(3)
+
 
 def get_chrome_version():
     try:
@@ -230,6 +234,7 @@ def get_chrome_version():
         logger.error(f"Failed to get Chrome version: {str(e)}")
         return None
 
+
 def get_chromedriver_version():
     try:
         output = subprocess.check_output(["/opt/homebrew/bin/chromedriver", "--version"])
@@ -237,17 +242,20 @@ def get_chromedriver_version():
     except Exception as e:
         logger.error(f"Failed to get ChromeDriver version: {str(e)}")
         return None
-    
+
+
 def check_chrome_chromedriver_compatibility():
     chrome_version = get_chrome_version()
     chromedriver_version = get_chromedriver_version()
-    
+
     if chrome_version and chromedriver_version:
-        chrome_major = chrome_version.split('.')[0]
-        chromedriver_major = chromedriver_version.split('.')[0]
-        
+        chrome_major = chrome_version.split(".")[0]
+        chromedriver_major = chromedriver_version.split(".")[0]
+
         if chrome_major != chromedriver_major:
-            logger.warning(f"Chrome version ({chrome_version}) and ChromeDriver version ({chromedriver_version}) may be incompatible.")
+            logger.warning(
+                f"Chrome version ({chrome_version}) and ChromeDriver version ({chromedriver_version}) may be incompatible."
+            )
             logger.warning("Please update ChromeDriver to match your Chrome version.")
         else:
             logger.info("Chrome and ChromeDriver versions appear to be compatible.")
@@ -262,13 +270,14 @@ def parse_args():
     parser.add_argument("--update-password", action="store_true", help="Update stored password")
     return parser.parse_args()
 
+
 async def main():
     args = parse_args()
     if args.debug:
         logger.setLevel(logging.DEBUG)
-    
+
     check_chrome_chromedriver_compatibility()
-    
+
     try:
         url = await get_sso_login_url()
         email, password = get_credentials(args.update_password)
@@ -278,6 +287,7 @@ async def main():
         if args.debug:
             logger.exception("Detailed traceback:")
         exit(1)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
