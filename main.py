@@ -9,6 +9,7 @@ from contextlib import contextmanager
 
 import keyring
 from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -37,14 +38,17 @@ ALLOW_SELECTOR = "[data-testid='allow-access-button']"
 MAX_WAIT_TIME = 30
 
 
-async def get_sso_login_url():
+async def get_sso_login_url(profile: str):
     """Retrieve the SSO login URL using the AWS CLI."""
-    logger.info("Executing 'aws sso login --no-browser'")
+    assert profile is not None, "Profile must be provided"
+    logger.info(f"Executing 'aws sso login --no-browser' with profile '{profile}'")
     try:
         process = await asyncio.create_subprocess_exec(
             "aws",
             "sso",
             "login",
+            "--profile",
+            profile,
             "--no-browser",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -116,8 +120,10 @@ def dismiss_cookie_banner(browser):
         cookie_banner_button = browser.find_element(By.CSS_SELECTOR, "button[data-id='awsccc-cb-btn-continue']")
         cookie_banner_button.click()
         logger.info("Clicked 'Continue without accepting' button on the cookie banner.")
+    except NoSuchElementException:
+        logger.info("No cookie banner found; proceeding without dismissing.")
     except Exception as e:
-        logger.debug(f"Cookie banner not found or couldn't be dismissed: {e}")
+        logger.warning(f"Unexpected error while dismissing cookie banner: {e}")
 
 
 def click_element_by_id(browser, element_id, description):
@@ -223,7 +229,7 @@ async def automate_sso_login(url, email, password, debug=False):
             raise
 
         logger.info("SSO login automated successfully")
-        time.sleep(3)
+        time.sleep(1)
 
 
 def get_chrome_version():
@@ -266,8 +272,9 @@ def check_chrome_chromedriver_compatibility():
 def parse_args():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Automate AWS SSO login.")
-    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument("--profile", default="prod", help="AWS profile to use (default: prod)")
     parser.add_argument("--update-password", action="store_true", help="Update stored password")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     return parser.parse_args()
 
 
@@ -279,7 +286,7 @@ async def main():
     check_chrome_chromedriver_compatibility()
 
     try:
-        url = await get_sso_login_url()
+        url = await get_sso_login_url(args.profile)
         email, password = get_credentials(args.update_password)
         await automate_sso_login(url, email, password, args.debug)
     except Exception as e:
