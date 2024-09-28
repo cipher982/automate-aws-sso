@@ -36,6 +36,7 @@ YES_BUTTON_ID = "idSIButton9"
 ALLOW_SELECTOR = "[data-testid='allow-access-button']"
 
 MAX_WAIT_TIME = 30
+DEBUG = False
 
 
 async def get_sso_login_url(profile: str):
@@ -137,6 +138,8 @@ def click_element_by_id(browser, element_id, description):
 def click_element_by_selector(browser, selector, description):
     """Find and click an element by its CSS selector."""
     logger.info(f"Waiting for '{description}' button to be clickable.")
+    if DEBUG:
+        time.sleep(3)
     element = WebDriverWait(browser, MAX_WAIT_TIME).until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
     element.click()
     logger.info(f"Clicked '{description}' button.")
@@ -208,6 +211,7 @@ async def automate_sso_login(url, email, password, debug=False):
                     click_element_by_id(browser, MFA_CHECKBOX_ID, "Don't ask again for 30 days")
 
                     dismiss_cookie_banner(browser)
+
                     mfa_code = input("Enter your MFA code: ")
                     input_text_by_id(browser, MFA_CODE_INPUT_ID, mfa_code, "MFA Code")
                     click_element_by_id(browser, MFA_VERIFY_ID, "Submit MFA Code")
@@ -275,7 +279,12 @@ def parse_args():
     parser.add_argument("--profile", default="prod", help="AWS profile to use (default: prod)")
     parser.add_argument("--update-password", action="store_true", help="Update stored password")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    global DEBUG
+    DEBUG = args.debug
+
+    return args
 
 
 async def main():
