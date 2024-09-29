@@ -40,7 +40,7 @@ DEBUG = False
 
 
 async def get_sso_login_url(profile: str):
-    """Retrieve the SSO login URL using the AWS CLI."""
+    """Retrieve the SSO login URL using the AWS CLI and return the subprocess."""
     assert profile is not None, "Profile must be provided"
     logger.info(f"Executing 'aws sso login --no-browser' with profile '{profile}'")
     try:
@@ -57,6 +57,7 @@ async def get_sso_login_url(profile: str):
 
         url_format = r"https://device.sso.[a-z0-9-]+.amazonaws.com/\?user_code=\w+-\w+"
 
+        sso_url = None
         while True:
             output = await process.stdout.readline()  # type: ignore
             if not output:
@@ -65,12 +66,15 @@ async def get_sso_login_url(profile: str):
             logger.debug(f"Command output line: {line}")
             url_match = re.search(url_format, line)
             if url_match:
-                logger.info(f"Found SSO URL: {url_match.group(0)}")
-                process.terminate()
-                return url_match.group(0)
+                sso_url = url_match.group(0)
+                logger.info(f"Found SSO URL: {sso_url}")
+                break
 
-        logger.error("Failed to find SSO URL in command output")
-        raise ValueError("SSO URL not found")
+        if not sso_url:
+            logger.error("Failed to find SSO URL in command output")
+            raise ValueError("SSO URL not found")
+
+        return sso_url, process
 
     except Exception as e:
         logger.error(f"Error executing command: {str(e)}")
@@ -295,9 +299,12 @@ async def main():
     check_chrome_chromedriver_compatibility()
 
     try:
-        url = await get_sso_login_url(args.profile)
+        sso_url, login_process = await get_sso_login_url(args.profile)
         email, password = get_credentials(args.update_password)
-        await automate_sso_login(url, email, password, args.debug)
+        await automate_sso_login(sso_url, email, password, args.debug)
+        logger.info("Waiting for 'aws sso login' process to complete...")
+        await login_process.wait()
+        logger.info("AWS SSO login process completed successfully.")
     except Exception as e:
         logger.error(f"An error occurred in main: {str(e)}")
         if args.debug:
