@@ -7,9 +7,11 @@ from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
+from webdriver_manager.chrome import ChromeDriverManager
 
 from constants import MAX_WAIT_TIME
 
@@ -45,6 +47,8 @@ class BrowserSession:
 
         try:
             logger.info("Attempting to create Chrome browser instance...")
+            # Replace the hardcoded service with ChromeDriverManager
+            service = ChromeService(ChromeDriverManager().install())
             self.browser = webdriver.Chrome(service=service, options=options)
             logger.info("Browser session created successfully")
             return self.browser
