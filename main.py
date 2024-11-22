@@ -126,20 +126,40 @@ class AWSSSOLoginAutomator:
 
     def handle_allow_access(self, browser):
         try:
-            logger.info("Checking for 'Allow Access' button...")
-            WebDriverWait(browser, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, ALLOW_SELECTOR)))
-            click_element_by_selector(browser, ALLOW_SELECTOR, "Allow Access")
-            logger.info("Clicked 'Allow Access' button.")
+            logger.info("Checking for 'Allow Access' button or success state...")
 
-            # Wait for the "Request approved" message
-            logger.info("Waiting for 'Request approved' message...")
-            WebDriverWait(browser, 20).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, REQUEST_APPROVED_SELECTOR))
-            )
-            logger.info("'Request approved' message found. Login process complete.")
-            return "complete"
+            # First check if we're already approved (success case)
+            try:
+                WebDriverWait(browser, 5).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, REQUEST_APPROVED_SELECTOR))
+                )
+                logger.info("'Request approved' message found. Login process complete.")
+                return "complete"
+            except TimeoutException:
+                pass
+
+            # Then check for Allow button
+            try:
+                WebDriverWait(browser, 5).until(EC.element_to_be_clickable((By.CSS_SELECTOR, ALLOW_SELECTOR)))
+                click_element_by_selector(browser, ALLOW_SELECTOR, "Allow Access")
+                logger.info("Clicked 'Allow Access' button.")
+
+                # Wait for approval
+                WebDriverWait(browser, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, REQUEST_APPROVED_SELECTOR))
+                )
+                logger.info("'Request approved' message found after clicking allow.")
+                return "complete"
+            except TimeoutException:
+                # If we can't find either the approval message or allow button,
+                # check the current URL to see if we're on a success page
+                if "aws.amazon.com" in browser.current_url:
+                    logger.info("Detected successful login based on URL redirect.")
+                    return "complete"
+
+            return "not_found"
         except Exception as e:
-            logger.info(f"'Allow Access' button or 'Request approved' message not found: {str(e)}")
+            logger.info(f"Error in allow access handling: {str(e)}")
             return "not_found"
 
     def run(self):

@@ -6,7 +6,6 @@ import os
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -25,35 +24,26 @@ class BrowserSession:
 
     def __enter__(self):
         options = Options()
+        options.add_argument("--no-sandbox")
+
+        # Create persistent profile directory
+        profile_dir = os.path.expanduser("~/aws_sso_profile")
+        os.makedirs(profile_dir, exist_ok=True)
+
+        # Add profile directory with proper formatting
+        options.add_argument(f"user-data-dir={profile_dir}")
+
         if not self.debug:
             options.add_argument("--headless")
 
-        # Create a custom Chrome profile directory
-        custom_profile_dir = os.path.expanduser("~/aws_sso_automation_profile")
-        os.makedirs(custom_profile_dir, exist_ok=True)
-
-        options.add_argument(f"user-data-dir={custom_profile_dir}")
-        options.add_argument("profile-directory=Default")
-
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option("useAutomationExtension", False)
-
-        logger.info(f"Chrome options: {options.arguments}")
-        logger.info(f"Custom profile directory: {custom_profile_dir}")
-
-        service = Service("/opt/homebrew/bin/chromedriver")
-
         try:
             logger.info("Attempting to create Chrome browser instance...")
-            # Replace the hardcoded service with ChromeDriverManager
             service = ChromeService(ChromeDriverManager().install())
             self.browser = webdriver.Chrome(service=service, options=options)
             logger.info("Browser session created successfully")
             return self.browser
         except Exception as e:
-            logger.error(f"Failed to create browser session: {str(e)}")
+            logger.error(f"Failed to create browser session: {str(e)}", exc_info=True)
             raise
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -96,3 +86,19 @@ def input_text_by_id(browser, element_id, text, description):
     element = WebDriverWait(browser, MAX_WAIT_TIME).until(EC.visibility_of_element_located((By.ID, element_id)))
     element.send_keys(text)
     logger.info(f"Entered text in '{description}' input.")
+
+
+if __name__ == "__main__":
+    # Set up logging
+    logging.basicConfig(level=logging.INFO)
+
+    # Test the browser session with debug mode (non-headless)
+    with BrowserSession(debug=True) as browser:
+        # Navigate to a test page
+        browser.get("https://aws.amazon.com")
+
+        # Test cookie banner dismissal
+        dismiss_cookie_banner(browser)
+
+        # Wait for user to verify
+        input("Press Enter to close the browser...")
