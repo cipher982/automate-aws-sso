@@ -25,6 +25,9 @@ class BrowserSession:
     def __enter__(self):
         options = Options()
         options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
+        options.add_experimental_option("excludeSwitches", ["enable-logging"])  # Reduce noise in logs
+        options.add_argument("--remote-debugging-port=9222")  # Add explicit debugging port
 
         # Create persistent profile directory
         profile_dir = os.path.expanduser("~/aws_sso_profile")
@@ -33,8 +36,10 @@ class BrowserSession:
         # Add profile directory with proper formatting
         options.add_argument(f"user-data-dir={profile_dir}")
 
+        # Temporarily force non-headless mode for debugging
+        self.debug = True
         if not self.debug:
-            options.add_argument("--headless")
+            options.add_argument("--headless=new")  # Use new headless mode
 
         try:
             logger.info("Attempting to create Chrome browser instance...")
