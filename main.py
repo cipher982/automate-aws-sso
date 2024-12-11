@@ -13,18 +13,17 @@ from browser_utils import BrowserSession
 from browser_utils import By
 from browser_utils import WebDriverWait
 from browser_utils import click_element_by_id
-from browser_utils import click_element_by_selector
 from browser_utils import dismiss_cookie_banner
 from browser_utils import input_text_by_id
-from constants import ALLOW_SELECTOR
 from constants import CONFIRM_ID
 from constants import EMAIL_ID
 from constants import MFA_CODE_INPUT_ID
 from constants import MFA_DESCRIPTION_ID
 from constants import MFA_VERIFY_ID
 from constants import PWD_ID
-from constants import REQUEST_APPROVED_SELECTOR
 from constants import SUBMIT_BUTTON_ID
+from constants import SUCCESS_TEXT_PATTERNS
+from constants import SUCCESS_TITLE
 from credential_manager import CredentialManager
 
 logger = logging.getLogger(__name__)
@@ -52,7 +51,7 @@ class AWSSSOLoginAutomator:
 
             dismiss_cookie_banner(browser)
 
-            # Define possible states
+            # Define possible states with priority order
             states = [
                 self.handle_confirmation_code,
                 self.handle_mfa,
@@ -62,29 +61,50 @@ class AWSSSOLoginAutomator:
 
             # Loop through states until login is complete
             login_complete = False
+            consecutive_no_state = 0
+            max_consecutive_no_state = 3  # Prevent infinite loops
+
             while not login_complete:
+                state_handled = False
+
+                # Quickly check each state in order
                 for state in states:
-                    result = state(browser)
-                    if result == "complete":
-                        login_complete = True
-                        break
-                    elif result == "continue":
-                        break
-                else:
-                    # If no state was handled, wait a short time before checking again
-                    time.sleep(0.5)
+                    try:
+                        result = state(browser)
+                        if result == "complete":
+                            login_complete = True
+                            break
+                        elif result == "continue":
+                            state_handled = True
+                            consecutive_no_state = 0
+                            break
+                    except Exception as e:
+                        logger.warning(f"Error in state {state.__name__}: {str(e)}")
+
+                # If no state was handled, increment counter
+                if not state_handled:
+                    consecutive_no_state += 1
+
+                    # Add a very short wait to prevent CPU spinning
+                    time.sleep(0.1)
+
+                # Prevent getting stuck
+                if consecutive_no_state >= max_consecutive_no_state:
+                    logger.warning("Multiple consecutive state checks failed. Refreshing page.")
+                    browser.refresh()
+                    consecutive_no_state = 0
 
             logger.info("SSO login automated successfully")
-            time.sleep(1)
+            time.sleep(1)  # Brief pause to ensure final state is captured
 
     def handle_confirmation_code(self, browser):
         try:
             logger.info("Checking for confirmation code screen...")
-            WebDriverWait(browser, 10).until(EC.presence_of_element_located((By.ID, CONFIRM_ID)))
+            WebDriverWait(browser, 3).until(EC.presence_of_element_located((By.ID, CONFIRM_ID)))
             logger.info("Confirmation code screen found. Clicking 'Confirm and continue'.")
             click_element_by_id(browser, CONFIRM_ID, "Confirm and Continue")
             # Wait for the element to disappear before returning
-            WebDriverWait(browser, 10).until_not(EC.presence_of_element_located((By.ID, CONFIRM_ID)))
+            WebDriverWait(browser, 3).until_not(EC.presence_of_element_located((By.ID, CONFIRM_ID)))
             return False  # Return False to move to the next state
         except Exception:
             logger.info("Confirmation code screen not found.")
@@ -128,39 +148,38 @@ class AWSSSOLoginAutomator:
         try:
             logger.info("Checking for 'Allow Access' button or success state...")
 
-            # First check if we're already approved (success case)
-            try:
-                WebDriverWait(browser, 5).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, REQUEST_APPROVED_SELECTOR))
-                )
-                logger.info("'Request approved' message found. Login process complete.")
-                return "complete"
-            except TimeoutException:
-                pass
+            # Immediately check for success state first
+            page_text = browser.page_source.lower()
+            page_title = browser.title
 
-            # Then check for Allow button
-            try:
-                WebDriverWait(browser, 5).until(EC.element_to_be_clickable((By.CSS_SELECTOR, ALLOW_SELECTOR)))
-                click_element_by_selector(browser, ALLOW_SELECTOR, "Allow Access")
-                logger.info("Clicked 'Allow Access' button.")
-
-                # Wait for approval
-                WebDriverWait(browser, 10).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, REQUEST_APPROVED_SELECTOR))
-                )
-                logger.info("'Request approved' message found after clicking allow.")
-                return "complete"
-            except TimeoutException:
-                # If we can't find either the approval message or allow button,
-                # check the current URL to see if we're on a success page
-                if "aws.amazon.com" in browser.current_url:
-                    logger.info("Detected successful login based on URL redirect.")
+            # Quick success check
+            for pattern in SUCCESS_TEXT_PATTERNS:
+                if pattern.lower() in page_text and page_title == SUCCESS_TITLE:
+                    logger.info("Success confirmed with text pattern and title. Login process complete.")
                     return "complete"
 
+            # Look for allow button more aggressively
+            try:
+                # Try multiple ways to find the button
+                buttons = browser.find_elements(By.TAG_NAME, "button")
+                allow_buttons = [
+                    btn for btn in buttons if any(word in btn.text.lower() for word in ["allow", "grant", "continue"])
+                ]
+
+                if allow_buttons:
+                    # Click the first matching button
+                    allow_button = allow_buttons[0]
+                    logger.info(f"Found allow button with text: {allow_button.text}")
+                    allow_button.click()
+                    return "continue"
+            except Exception as e:
+                logger.warning(f"Error finding allow button: {str(e)}")
+
+            # If no button found and no success, return not found
             return "not_found"
         except Exception as e:
-            logger.info(f"Error in allow access handling: {str(e)}")
-            return "not_found"
+            logger.error(f"Error in handle_allow_access: {str(e)}")
+            return "error"
 
     def run(self):
         AWSCLIUtils.check_chrome_chromedriver_compatibility()

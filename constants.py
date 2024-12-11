@@ -13,7 +13,17 @@ SUBMIT_BUTTON_ID = "idSIButton9"
 DONT_SHOW_AGAIN_CHECKBOX_ID = "KmsiCheckboxField"
 YES_BUTTON_ID = "idSIButton9"
 ALLOW_SELECTOR = "[data-testid='allow-access-button']"
-REQUEST_APPROVED_SELECTOR = "div.awsui_header_mx3cw_11nyy_316"
+# Update success detection patterns
+SUCCESS_TEXT_PATTERNS = [
+    "you can close this window",
+    "you have successfully logged into aws",
+    "request approved",
+    "success",
+]
+
+# Add selectors for different page states
+ALLOW_ACCESS_PAGE_SELECTOR = "form[data-testid='allow-access-form']"
+SUCCESS_TITLE = "AWS access portal"
 
 MAX_WAIT_TIME = 30
 SERVICE_NAME = "aws_sso_login"

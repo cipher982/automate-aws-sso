@@ -2,6 +2,7 @@
 
 import logging
 import os
+import time
 
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
@@ -91,6 +92,39 @@ def input_text_by_id(browser, element_id, text, description):
     element = WebDriverWait(browser, MAX_WAIT_TIME).until(EC.visibility_of_element_located((By.ID, element_id)))
     element.send_keys(text)
     logger.info(f"Entered text in '{description}' input.")
+
+
+def wait_for_page_load(browser, timeout=10):
+    """Wait for the page to complete loading."""
+
+    def page_has_loaded(driver):
+        return driver.execute_script("return document.readyState") == "complete"
+
+    try:
+        WebDriverWait(browser, timeout).until(page_has_loaded)
+        return True
+    except Exception as e:
+        logger.warning(f"Page load wait timed out: {str(e)}")
+        return False
+
+
+def smart_wait(browser, min_wait=0.1, max_wait=2.0, timeout=10):
+    """
+    Smart waiting strategy that combines page load detection with dynamic polling.
+    Returns True if page is ready, False if timeout occurred.
+    """
+    start_time = time.time()
+    current_wait = min_wait
+
+    while time.time() - start_time < timeout:
+        if wait_for_page_load(browser, timeout=1):
+            return True
+
+        # Exponential backoff with max limit
+        time.sleep(current_wait)
+        current_wait = min(max_wait, current_wait * 1.5)
+
+    return False
 
 
 if __name__ == "__main__":
