@@ -6,6 +6,8 @@ import sys
 import time
 
 from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
 
 from aws_cli_utils import AWSCLIUtils
 from browser_utils import EC
@@ -15,7 +17,6 @@ from browser_utils import WebDriverWait
 from browser_utils import click_element_by_id
 from browser_utils import dismiss_cookie_banner
 from browser_utils import input_text_by_id
-from constants import CONFIRM_ID
 from constants import EMAIL_ID
 from constants import MFA_CODE_INPUT_ID
 from constants import MFA_DESCRIPTION_ID
@@ -38,14 +39,18 @@ class AWSSSOLoginAutomator:
         self.password = None
         self.sso_url = None
         self.login_process = None
+        self.verification_code = None
 
     def get_sso_login_url(self):
-        self.sso_url, self.login_process = AWSCLIUtils.get_sso_login_url(self.profile)
+        """Get the SSO login URL and verification code."""
+        final_url, self.verification_code, self.login_process = AWSCLIUtils.get_sso_login_url(self.profile)
+        self.sso_url = final_url  # Use the autofill URL when available
 
     def automate_sso_login(self):
         self.email, self.password = CredentialManager.get_credentials(self.update_password)
         with BrowserSession(debug=self.debug) as browser:
             assert self.sso_url is not None, "SSO URL not found"
+            logger.info(f"Navigating to URL: {self.sso_url}")
             browser.get(self.sso_url)
             logger.info(f"Navigated to URL: {self.sso_url}")
 
@@ -63,6 +68,7 @@ class AWSSSOLoginAutomator:
             login_complete = False
             consecutive_no_state = 0
             max_consecutive_no_state = 3  # Prevent infinite loops
+            last_state = None
 
             while not login_complete:
                 state_handled = False
@@ -70,22 +76,34 @@ class AWSSSOLoginAutomator:
                 # Quickly check each state in order
                 for state in states:
                     try:
+                        # Skip if we just handled this state and got "continue"
+                        if state == last_state:
+                            continue
+
+                        logger.info(f"Trying state: {state.__name__}")
                         result = state(browser)
+
                         if result == "complete":
+                            logger.info(f"State {state.__name__} completed login")
                             login_complete = True
                             break
                         elif result == "continue":
+                            logger.info(f"State {state.__name__} handled, moving to next state")
                             state_handled = True
                             consecutive_no_state = 0
+                            last_state = state
                             break
+                        elif result == "not_found":
+                            logger.debug(f"State {state.__name__} not applicable")
+                            continue
+
                     except Exception as e:
                         logger.warning(f"Error in state {state.__name__}: {str(e)}")
 
                 # If no state was handled, increment counter
                 if not state_handled:
                     consecutive_no_state += 1
-
-                    # Add a very short wait to prevent CPU spinning
+                    logger.debug(f"No state handled. Attempt {consecutive_no_state}/{max_consecutive_no_state}")
                     time.sleep(0.1)
 
                 # Prevent getting stuck
@@ -93,22 +111,25 @@ class AWSSSOLoginAutomator:
                     logger.warning("Multiple consecutive state checks failed. Refreshing page.")
                     browser.refresh()
                     consecutive_no_state = 0
+                    last_state = None
 
             logger.info("SSO login automated successfully")
             time.sleep(1)  # Brief pause to ensure final state is captured
 
     def handle_confirmation_code(self, browser):
+        """Handle the verification code input state."""
+        logger.info("State: Handling verification code input")
+
         try:
-            logger.info("Checking for confirmation code screen...")
-            WebDriverWait(browser, 3).until(EC.presence_of_element_located((By.ID, CONFIRM_ID)))
-            logger.info("Confirmation code screen found. Clicking 'Confirm and continue'.")
-            click_element_by_id(browser, CONFIRM_ID, "Confirm and Continue")
-            # Wait for the element to disappear before returning
-            WebDriverWait(browser, 3).until_not(EC.presence_of_element_located((By.ID, CONFIRM_ID)))
-            return False  # Return False to move to the next state
-        except Exception:
-            logger.info("Confirmation code screen not found.")
-            return False
+            # The code is already filled in via URL, just press Enter
+            logger.info("Code auto-filled, submitting...")
+            ActionChains(browser).send_keys(Keys.RETURN).perform()
+            logger.info("Code submitted")
+            return "continue"
+
+        except Exception as e:
+            logger.error(f"Failed to handle verification code: {str(e)}")
+            return "not_found"
 
     def handle_mfa(self, browser):
         try:
@@ -213,7 +234,7 @@ def main():
 
     logging.basicConfig(
         level=logger.level,
-        format="%(asctime)s - %(levelname)s - %(message)s",
+        format="%(levelname)s - %(message)s",
     )
 
     automator = AWSSSOLoginAutomator(profile=args.profile, update_password=args.update_password, debug=args.debug)

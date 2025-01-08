@@ -26,28 +26,29 @@ class BrowserSession:
     def __enter__(self):
         options = Options()
         options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
-        options.add_experimental_option("excludeSwitches", ["enable-logging"])  # Reduce noise in logs
-        options.add_argument("--remote-debugging-port=9222")  # Add explicit debugging port
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_experimental_option("excludeSwitches", ["enable-logging"])
 
         # Create persistent profile directory
         profile_dir = os.path.expanduser("~/aws_sso_profile")
         os.makedirs(profile_dir, exist_ok=True)
-
-        # Add profile directory with proper formatting
         options.add_argument(f"user-data-dir={profile_dir}")
-
-        # Temporarily force non-headless mode for debugging
-        self.debug = True
-        if not self.debug:
-            options.add_argument("--headless=new")  # Use new headless mode
 
         try:
             logger.info("Attempting to create Chrome browser instance...")
+
+            # Set Chrome binary location for macOS
+            chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+            if os.path.exists(chrome_path):
+                logger.info(f"Found Chrome binary at: {chrome_path}")
+                options.binary_location = chrome_path
+
+            # Initialize ChromeDriver
             service = ChromeService(ChromeDriverManager().install())
             self.browser = webdriver.Chrome(service=service, options=options)
             logger.info("Browser session created successfully")
             return self.browser
+
         except Exception as e:
             logger.error(f"Failed to create browser session: {str(e)}", exc_info=True)
             raise
@@ -129,7 +130,7 @@ def smart_wait(browser, min_wait=0.1, max_wait=2.0, timeout=10):
 
 if __name__ == "__main__":
     # Set up logging
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 
     # Test the browser session with debug mode (non-headless)
     with BrowserSession(debug=True) as browser:
