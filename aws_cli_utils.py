@@ -29,16 +29,23 @@ class AWSCLIUtils:
                 text=True,
             )
 
-            url_format = r"https://device\.sso\.[a-z0-9-]+\.amazonaws\.com/\?user_code=\w+-\w+"
+            # More flexible URL matching
+            url_patterns = [
+                r"https://.*awsapps\.com/start/#/device",
+                r"https://device\.sso\.[a-z0-9-]+\.amazonaws\.com/\?user_code=\w+-\w+",
+            ]
 
             sso_url = None
             if process.stdout:
                 for line in process.stdout:
                     logger.info(f"Command output line: {line.strip()}")
-                    url_match = re.search(url_format, line)
-                    if url_match:
-                        sso_url = url_match.group(0)
-                        logger.info(f"Found SSO URL: {sso_url}")
+                    for pattern in url_patterns:
+                        url_match = re.search(pattern, line)
+                        if url_match:
+                            sso_url = url_match.group(0)
+                            logger.info(f"Found SSO URL: {sso_url}")
+                            break
+                    if sso_url:
                         break
 
             if not sso_url:
