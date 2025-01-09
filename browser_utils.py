@@ -34,6 +34,12 @@ class BrowserSession:
         os.makedirs(profile_dir, exist_ok=True)
         options.add_argument(f"user-data-dir={profile_dir}")
 
+        # Conditionally add headless mode based on debug flag
+        if not self.debug:
+            options.add_argument("--headless")  # Run in headless mode only when not in debug
+            options.add_argument("--disable-gpu")  # Recommended for headless mode on some systems
+            options.add_argument("--window-size=1920,1080")  # Set a default window size for headless mode
+
         try:
             logger.info("Attempting to create Chrome browser instance...")
 
@@ -126,19 +132,3 @@ def smart_wait(browser, min_wait=0.1, max_wait=2.0, timeout=10):
         current_wait = min(max_wait, current_wait * 1.5)
 
     return False
-
-
-if __name__ == "__main__":
-    # Set up logging
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
-
-    # Test the browser session with debug mode (non-headless)
-    with BrowserSession(debug=True) as browser:
-        # Navigate to a test page
-        browser.get("https://aws.amazon.com")
-
-        # Test cookie banner dismissal
-        dismiss_cookie_banner(browser)
-
-        # Wait for user to verify
-        input("Press Enter to close the browser...")
