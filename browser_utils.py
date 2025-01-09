@@ -36,9 +36,9 @@ class BrowserSession:
 
         # Conditionally add headless mode based on debug flag
         if not self.debug:
-            options.add_argument("--headless")  # Run in headless mode only when not in debug
-            options.add_argument("--disable-gpu")  # Recommended for headless mode on some systems
-            options.add_argument("--window-size=1920,1080")  # Set a default window size for headless mode
+            options.add_argument("--headless")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--window-size=1920,1080")
 
         try:
             logger.info("Attempting to create Chrome browser instance...")
